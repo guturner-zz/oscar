@@ -23,4 +23,5 @@ local.properties
 
 # Project Specific #
 *refresh_token.properties
+*access_token.properties
 *info.properties

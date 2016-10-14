@@ -78,6 +78,7 @@ public class EcobeeReader {
 		JSONObject jsonObject = jsonResponse.getBody().getObject();
 		
 		saveRefreshToken(jsonObject.getString("refresh_token"));
+		saveAccessToken(jsonObject.getString("access_token"));
 		
 		return jsonObject.getString("access_token");
 	}
@@ -87,7 +88,7 @@ public class EcobeeReader {
 	 * 
 	 * @param accessToken Retrieved from getNewAccessToken.
 	 */
-	public HashMap<String, HashMap<String, String>> getThermostatRuntime(String accessToken) {
+	public HashMap<String, HashMap<String, String>> getThermostatRuntime(String accessToken) throws Exception {
 		HashMap<String, HashMap<String, String>> detailsMap = new HashMap<String, HashMap<String, String>>();
 		HttpResponse<JsonNode> jsonResponse = null;
 		
@@ -108,6 +109,11 @@ public class EcobeeReader {
 		}
 		
 		JSONObject jsonObject = jsonResponse.getBody().getObject();
+		
+		if (jsonObject.has("error")) {
+			throw new Exception(jsonObject.getString("error"));
+		}
+		
 		JSONArray reportList  = jsonObject.getJSONArray("reportList");
 		JSONArray rowList     = reportList.getJSONObject(0).getJSONArray("rowList");
 		
@@ -133,33 +139,51 @@ public class EcobeeReader {
 	}
 	
 	public void logRuntimeEvents() {
-		String accessToken = getNewAccessToken();
-		HashMap<String, HashMap<String, String>> detailsMap = getThermostatRuntime(accessToken);
+		logRuntimeEvents(false);
+	}
+	
+	private void logRuntimeEvents(boolean lastChance) {
+		HashMap<String, HashMap<String, String>> detailsMap;
 		
-		for (String timestamp : detailsMap.keySet()) {
-			HashMap<String, String> vals = detailsMap.get(timestamp);
-			
-			String log = "";
-			
-			log += "iot=[ecobee] timestamp=[" + timestamp + "] ";
-			log += "avgTemp=[" + vals.get("zoneAveTemp") + "] ";
-			log += "avgHumidity=[" + vals.get("zoneHumidity") + "] ";
-			log += "desiredCool=[" + vals.get("zoneCoolTemp") + "] ";
-			log += "desiredHeat=[" + vals.get("zoneHeatTemp") + "] ";
-			log += "eventName=[" + vals.get("zoneCalendarEvent") + "] ";
-			log += "hvacMode=[" + vals.get("zoneHvacMode") + "] ";
-			
-			System.out.println(log);
+		String accessToken = getAccessToken();
+		try {
+			detailsMap = getThermostatRuntime(accessToken);
+		
+			for (String timestamp : detailsMap.keySet()) {
+				HashMap<String, String> vals = detailsMap.get(timestamp);
+				
+				String log = "";
+				
+				log += "iot=[ecobee] timestamp=[" + timestamp + "] ";
+				log += "avgTemp=[" + vals.get("zoneAveTemp") + "] ";
+				log += "avgHumidity=[" + vals.get("zoneHumidity") + "] ";
+				log += "desiredCool=[" + vals.get("zoneCoolTemp") + "] ";
+				log += "desiredHeat=[" + vals.get("zoneHeatTemp") + "] ";
+				log += "eventName=[" + vals.get("zoneCalendarEvent") + "] ";
+				log += "hvacMode=[" + vals.get("zoneHvacMode") + "] ";
+				
+				System.out.println(log);
+			}
+		} catch (Exception e) {
+			System.err.println(e);
+			if (!lastChance) {
+				getNewAccessToken();
+				logRuntimeEvents(true);
+			}
 		}
 	}
 	
 	private void saveRefreshToken(String token) {
 		try
 		{
+			String oldRefreshToken = getRefreshToken();
+			String timestamp = new SimpleDateFormat("yyyy-MM-dd-hh:mm:ss").format(new Date());
+			
 			String path = this.getClass().getClassLoader().getResource("iot/ecobee/refresh_token.properties").getPath();
 			
 			PropertiesConfiguration config = new PropertiesConfiguration(path);
 			config.setProperty("refresh_token", token);
+			config.setProperty(timestamp + "_refresh_token", oldRefreshToken);
 		    config.save();
 		} catch (Exception e) {
 			System.err.println(e);
@@ -175,6 +199,39 @@ public class EcobeeReader {
 			
 			PropertiesConfiguration config = new PropertiesConfiguration(path);
 		    refreshToken = config.getString("refresh_token");
+		} catch (Exception e) {
+			System.err.println(e);
+		}
+		
+		return refreshToken;
+	}
+	
+	private void saveAccessToken(String token) {
+		try
+		{
+			String oldAccessToken = getRefreshToken();
+			String timestamp = new SimpleDateFormat("yyyy-MM-dd-hh:mm:ss").format(new Date());
+			
+			String path = this.getClass().getClassLoader().getResource("iot/ecobee/access_token.properties").getPath();
+			
+			PropertiesConfiguration config = new PropertiesConfiguration(path);
+			config.setProperty("access_token", token);
+			config.setProperty(timestamp + "_access_token", oldAccessToken);
+		    config.save();
+		} catch (Exception e) {
+			System.err.println(e);
+		}
+	}
+	
+	private String getAccessToken() {
+		String refreshToken = null;
+		
+		try
+		{
+			String path = this.getClass().getClassLoader().getResource("iot/ecobee/access_token.properties").getPath();
+			
+			PropertiesConfiguration config = new PropertiesConfiguration(path);
+		    refreshToken = config.getString("access_token");
 		} catch (Exception e) {
 			System.err.println(e);
 		}
