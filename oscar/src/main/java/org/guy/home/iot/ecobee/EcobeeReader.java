@@ -3,6 +3,7 @@ package org.guy.home.iot.ecobee;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.commons.configuration.PropertiesConfiguration;
 import org.guy.home.iot.IOTHelper;
@@ -68,7 +69,7 @@ public class EcobeeReader {
 		try {
 			jsonResponse = Unirest.post("https://api.ecobee.com/token")
 					.queryString("grant_type", "refresh_token")
-					.queryString("code", refreshToken)
+					.queryString("refresh_token", refreshToken)
 					.queryString("client_id", IOTHelper.getEcobeeAPIKey())
 					.asJson();
 		} catch (Exception e) {
@@ -88,8 +89,8 @@ public class EcobeeReader {
 	 * 
 	 * @param accessToken Retrieved from getNewAccessToken.
 	 */
-	public HashMap<String, HashMap<String, String>> getThermostatRuntime(String accessToken) throws Exception {
-		HashMap<String, HashMap<String, String>> detailsMap = new HashMap<String, HashMap<String, String>>();
+	public Map<String, Map<String, String>> getThermostatRuntime(String accessToken) throws Exception {
+		Map<String, Map<String, String>> detailsMap = new HashMap<String, Map<String, String>>();
 		HttpResponse<JsonNode> jsonResponse = null;
 		
 		Date today = new Date();
@@ -110,8 +111,11 @@ public class EcobeeReader {
 		
 		JSONObject jsonObject = jsonResponse.getBody().getObject();
 		
-		if (jsonObject.has("error")) {
-			throw new Exception(jsonObject.getString("error"));
+		if (jsonObject.has("status")) {
+			JSONObject statusObject = jsonObject.getJSONObject("status");
+			if (statusObject.has("message") && statusObject.getString("message").contains("Authentication token has expired. Refresh your tokens.")) {
+				throw new Exception(statusObject.getString("message"));
+			}
 		}
 		
 		JSONArray reportList  = jsonObject.getJSONArray("reportList");
@@ -121,9 +125,9 @@ public class EcobeeReader {
 			String eventString = rowList.getString(i);
 			String[] eventLs = eventString.split(",");
 			
-			HashMap<String, String> eventMap = new HashMap<String, String>();
+			Map<String, String> eventMap = new HashMap<String, String>();
 			try {
-				eventMap.put("zoneAveTemp", eventLs[2]);
+				eventMap.put("zoneAvgTemp", eventLs[2]);
 				eventMap.put("zoneCalendarEvent", eventLs[3]);
 				eventMap.put("zoneCoolTemp", eventLs[4]);
 				eventMap.put("zoneHeatTemp", eventLs[5]);
@@ -138,39 +142,25 @@ public class EcobeeReader {
 		return detailsMap;
 	}
 	
-	public void logRuntimeEvents() {
-		logRuntimeEvents(false);
+	public Map<String, Map<String, String>> getEcobeeLogDetailsMap() {
+		return getEcobeeLogDetailsMap(false);
 	}
 	
-	private void logRuntimeEvents(boolean lastChance) {
-		HashMap<String, HashMap<String, String>> detailsMap;
+	public Map<String, Map<String, String>> getEcobeeLogDetailsMap(Boolean lastChance) {
+		Map<String, Map<String, String>> detailsMap = null;
 		
-		String accessToken = getAccessToken();
 		try {
+			String accessToken = getAccessToken();
 			detailsMap = getThermostatRuntime(accessToken);
-		
-			for (String timestamp : detailsMap.keySet()) {
-				HashMap<String, String> vals = detailsMap.get(timestamp);
-				
-				String log = "";
-				
-				log += "iot=[ecobee] timestamp=[" + timestamp + "] ";
-				log += "avgTemp=[" + vals.get("zoneAveTemp") + "] ";
-				log += "avgHumidity=[" + vals.get("zoneHumidity") + "] ";
-				log += "desiredCool=[" + vals.get("zoneCoolTemp") + "] ";
-				log += "desiredHeat=[" + vals.get("zoneHeatTemp") + "] ";
-				log += "eventName=[" + vals.get("zoneCalendarEvent") + "] ";
-				log += "hvacMode=[" + vals.get("zoneHvacMode") + "] ";
-				
-				System.out.println(log);
-			}
 		} catch (Exception e) {
 			System.err.println(e);
 			if (!lastChance) {
 				getNewAccessToken();
-				logRuntimeEvents(true);
+				getEcobeeLogDetailsMap(true);
 			}
 		}
+		
+		return detailsMap;
 	}
 	
 	private void saveRefreshToken(String token) {
@@ -223,7 +213,7 @@ public class EcobeeReader {
 		}
 	}
 	
-	private String getAccessToken() {
+	public String getAccessToken() {
 		String refreshToken = null;
 		
 		try
