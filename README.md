@@ -30,4 +30,4 @@ AUTH_CODE=abcdefg
 
 You should create a folder named 'oscar' in your C:\\Users\\\<User\>\\ folder. Under that, create a 'db' and 'logs' folder.
 
-You can monitor your H2 database anytime the Web server is running by visiting http://localhost:8080/console/. You'll want to change the DB name to ~/oscar/db/oscar
+You can monitor your H2 database anytime the Web server is running by visiting http://localhost:8080/h2-console/. You'll want to change the DB name to ~/oscar/db/oscar
